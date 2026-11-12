@@ -2,61 +2,65 @@ import json
 import time
 import requests
 from datetime import datetime
+import os
 
-# Files
-PORTFOLIO_FILE = 'portfolio.json'
+PORTFOLIO_FILE = 'trading.json'
 
 def get_current_time():
+    """Current time return karta hai"""
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-def log_movement(portfolio, message):
-    """Har single movement ko time ke sath capture karta hai"""
-    timestamp = get_current_time()
-    log_entry = f"[{timestamp}] {message}"
-    print(log_entry) # GitHub Actions terminal ke liye
-    portfolio['logs'].append(log_entry)
-    
-    # Har baar log save karna taaki track rahe
-    with open(PORTFOLIO_FILE, 'w') as f:
-        json.dump(portfolio, f, indent=4)
-
-def fetch_btc_price():
-    """Binance Public API se bina login kiye price lana"""
+def fetch_binance_public_price(symbol="BTCUSDT"):
+    """Bina kisi API key ke Binance se current price fetch karna"""
     try:
-        url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
-        response = requests.get(url)
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        response = requests.get(url, timeout=10)
         data = response.json()
         return float(data['price'])
     except Exception as e:
+        print(f"Error fetching price: {e}")
         return None
 
-def run_paper_trader():
-    # 1. Load Portfolio
-    with open(PORTFOLIO_FILE, 'r') as f:
-        portfolio = json.load(f)
+def log_and_save(portfolio, message):
+    """Logs update karke json file mein save karta hai"""
+    timestamp = get_current_time()
+    log_entry = f"[{timestamp}] {message}"
+    print(log_entry)
     
-    log_movement(portfolio, "Bot Started. Fetching market data...")
+    # Naye log ko list ke shuru mein add karein taaki latest hamesha upar rahe
+    portfolio['logs'].insert(0, log_entry)
+    
+    # File save karna
+    with open(PORTFOLIO_FILE, 'w') as f:
+        json.dump(portfolio, f, indent=4)
 
-    # 2. Get Price
-    current_price = fetch_btc_price()
-    if not current_price:
-        log_movement(portfolio, "ERROR: Binance API se price fetch nahi ho paya.")
+def run_trading_cycle():
+    # 1. Purana data load karna (Agar file exist nahi karti toh error dega)
+    if not os.path.exists(PORTFOLIO_FILE):
+        print(f"Error: {PORTFOLIO_FILE} nahi mili!")
         return
 
-    log_movement(portfolio, f"Current BTC Price: ${current_price}")
+    with open(PORTFOLIO_FILE, 'r') as f:
+        portfolio = json.load(f)
+
+    log_and_save(portfolio, "Cycle Started. Fetching market data...")
+
+    # 2. Binance API call
+    current_price = fetch_binance_public_price()
+    if not current_price:
+        log_and_save(portfolio, "Binance Public API se price nahi mila. Skipping this minute.")
+        return
+
+    log_and_save(portfolio, f"Current BTC Price: ${current_price}")
     
-    # ==========================================
-    # STRATEGY ENGINE (Yahan aap apne rules laga sakte hain)
-    # Example: Simple Price Drop Strategy
-    # Agar status WAITING hai aur price condition match hoti hai toh BUY karo
-    # ==========================================
+    # 3. YAHAN AAPKI MAIN STRATEGY AAYEGI (Example Logic Below)
     
-    # Dummy Condition: Buy if we have USDT balance
+    # Condition: Agar $1000 balance hai aur coin sasta hua hai (sirf example)
     if portfolio['status'] == "WAITING" and portfolio['balance_usdt'] > 0:
-        buy_amount_usdt = portfolio['balance_usdt'] # Pura $1000 laga diya
-        btc_bought = buy_amount_usdt / current_price
+        # Pura balance laga diya
+        buy_amount = portfolio['balance_usdt']
+        btc_bought = buy_amount / current_price
         
-        # Portfolio Update
         portfolio['balance_usdt'] = 0.0
         portfolio['holding_btc'] = btc_bought
         portfolio['status'] = "IN_TRADE"
@@ -68,14 +72,12 @@ def run_paper_trader():
             "time": get_current_time()
         }
         portfolio['trade_history'].append(trade_details)
-        log_movement(portfolio, f"🚀 RULE MATCHED: Executed BUY order for {btc_bought:.4f} BTC at ${current_price}")
-        
+        log_and_save(portfolio, f"🚀 STRATEGY TRIGGERED: BUY {btc_bought:.5f} BTC at ${current_price}")
+
+    # Condition: Agar coin hold kiya hai, toh usko sell karo
     elif portfolio['status'] == "IN_TRADE" and portfolio['holding_btc'] > 0:
-        # Dummy Condition: Sell logic (Example: Har haal mein sell kar do agle run mein)
-        # Real scenario mein yahan aap Stop-Loss ya Take-Profit ka math lagayenge
         usdt_received = portfolio['holding_btc'] * current_price
         
-        # Portfolio Update
         portfolio['balance_usdt'] = usdt_received
         portfolio['holding_btc'] = 0.0
         portfolio['status'] = "WAITING"
@@ -88,14 +90,18 @@ def run_paper_trader():
         }
         portfolio['trade_history'].append(trade_details)
         
-        # P/L Calculate karna
-        profit = usdt_received - 1000 # initial balance 1000 tha
-        log_movement(portfolio, f"💰 EXECUTED SELL order. Received ${usdt_received:.2f}. Total Profit/Loss: ${profit:.2f}")
+        profit = usdt_received - 1000.0
+        log_and_save(portfolio, f"💰 STRATEGY TRIGGERED: SELL Executed. Received ${usdt_received:.2f}. Total P/L: ${profit:.2f}")
     
     else:
-        log_movement(portfolio, "No rules matched. Waiting for next cycle.")
+        log_and_save(portfolio, "No strategy rules matched. Waiting...")
 
-    log_movement(portfolio, "Bot cycle completed.")
-
+# GitHub Actions ko 5 min chalaane ke liye loop
 if __name__ == "__main__":
-    run_paper_trader()
+    for i in range(5):
+        print(f"\n--- Minute {i+1} Check ---")
+        run_trading_cycle()
+        
+        # Aakhri (5th) baar sleep ki zaroorat nahi hai
+        if i < 4:
+            time.sleep(60)
