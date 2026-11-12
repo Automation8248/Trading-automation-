@@ -1,0 +1,36 @@
+name: JSON Paper Trader
+
+on:
+  schedule:
+    # Har 15 minute mein check karega (*/15 * * * *)
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Manual run ka button
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Git commit karne ki permission
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Trading Bot
+        run: python bot.py
+
+      - name: Commit & Push Changes
+        # Agar JSON file mein koi badlaav (log/trade) hua hai, toh use Git par push kar dega
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add portfolio.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update portfolio and logs" && git push)
