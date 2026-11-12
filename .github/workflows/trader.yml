@@ -1,19 +1,18 @@
-name: JSON Paper Trader
+name: Binance Algo Trader
 
 on:
   schedule:
-    # Har 15 minute mein check karega (*/15 * * * *)
-    - cron: '* * * * *'
-  workflow_dispatch: # Manual run ka button
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
-  trade:
+  run-bot:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Git commit karne ki permission
-    
+      contents: write
+      
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Setup Python
@@ -21,16 +20,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: pip install requests
+      - name: Install Requirements
+        run: pip install ccxt requests
 
-      - name: Run Trading Bot
-        run: python bot.py
+      - name: Run Trading Loop
+        env:
+          # GitHub Secrets se keys inject ho rahi hain
+          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+          BINANCE_API_SECRET: ${{ secrets.BINANCE_API_SECRET }}
+        run: python trader.py
 
-      - name: Commit & Push Changes
-        # Agar JSON file mein koi badlaav (log/trade) hua hai, toh use Git par push kar dega
+      - name: Save JSON to GitHub
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add portfolio.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update portfolio and logs" && git push)
+          git add trading.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update portfolio logs [skip ci]" && git push)
