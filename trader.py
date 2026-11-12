@@ -1,15 +1,28 @@
 import os
 import json
 import time
+import requests
 from datetime import datetime
-import ccxt
 
 PORTFOLIO_FILE = 'trading.json'
-STOP_LOSS_PCT = 0.010  
-TAKE_PROFIT_PCT = 0.015  
+
+# --- Trading Strategy Parameters ---
+STOP_LOSS_PCT = 0.010  # 1.0%
+TAKE_PROFIT_PCT = 0.015  # 1.5%
 
 def get_current_time():
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+def fetch_binance_public_price(symbol="BTCUSDT"):
+    """Bina API Key ke public price lana, taaki US IP ban na ho"""
+    try:
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        return float(data['price'])
+    except Exception as e:
+        print(f"Fetch Error: {e}")
+        return None
 
 def log_and_save(portfolio, message):
     timestamp = get_current_time()
@@ -89,28 +102,12 @@ def run_cycle():
 
     log_and_save(portfolio, "-----------------------------------")
     
-    # 1. Binance se secure connection banana (using GitHub Secrets keys)
-    api_key = os.environ.get('BINANCE_API_KEY')
-    api_secret = os.environ.get('BINANCE_API_SECRET')
-    
-    if not api_key or not api_secret:
-        log_and_save(portfolio, "Error: API Keys GitHub Secrets mein nahi mili!")
-        return
-
-    exchange = ccxt.binance({
-        'apiKey': api_key,
-        'secret': api_secret,
-        'enableRateLimit': True,
-    })
-
-    # 2. Market price fetch karna API ke through
-    try:
-        ticker = exchange.fetch_ticker('BTC/USDT')
-        current_price = ticker['last']
-        log_and_save(portfolio, f"Live Price Fetch (CCXT): ${current_price:.2f}")
+    current_price = fetch_binance_public_price("BTCUSDT")
+    if current_price:
+        log_and_save(portfolio, f"Live Price Fetch (Public): ${current_price:.2f}")
         check_and_execute_trade(portfolio, current_price)
-    except Exception as e:
-        log_and_save(portfolio, f"Exchange Error: {str(e)}")
+    else:
+        log_and_save(portfolio, "Network Error: Could not fetch price.")
 
 if __name__ == "__main__":
     for i in range(5):
