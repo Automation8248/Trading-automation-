@@ -3,7 +3,7 @@ name: JSON Paper Trader
 on:
   schedule:
     # Har 15 minute mein check karega (*/15 * * * *)
-    - cron: '*/15 * * * *'
+    - cron: '* * * * *'
   workflow_dispatch: # Manual run ka button
 
 jobs:
